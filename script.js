@@ -735,6 +735,7 @@ document.documentElement.classList.remove('no-js'); document.documentElement.cla
     els.drawerBody.appendChild(panel);
     if (els.drawerTitle) els.drawerTitle.textContent = panelTitle(panel);
     resetAccordions(panel);
+    watchNote(panel);
     els.drawerBody.scrollTop = 0;
     if (panel.getAttribute('data-panel') === 'about') animateStats(panel);
     /* Ещё раз после отрисовки: при смене панели браузер успевает восстановить прокрутку */
@@ -750,6 +751,27 @@ document.documentElement.classList.remove('no-js'); document.documentElement.cla
       if (i === 0) list[i].setAttribute('open', '');
       else list[i].removeAttribute('open');
     }
+  }
+
+  /* Каретка у подписи про Claude запускается, когда подпись реально попала в поле зрения */
+  var noteObserver = null;
+  function watchNote(panel) {
+    if (noteObserver) { noteObserver.disconnect(); noteObserver = null; }
+    var note = $('.panel__note', panel);
+    if (!note || !els.drawerBody) return;
+    note.classList.remove('is-typing');
+    if (typeof IntersectionObserver !== 'function') { note.classList.add('is-typing'); return; }
+    noteObserver = new IntersectionObserver(function (entries) {
+      for (var i = 0; i < entries.length; i++) {
+        if (entries[i].isIntersecting) {
+          note.classList.add('is-typing');
+          noteObserver.disconnect();
+          noteObserver = null;
+          return;
+        }
+      }
+    }, { root: els.drawerBody, threshold: .6 });
+    noteObserver.observe(note);
   }
 
   /* Цифры в «Обо мне» считаются от нуля до значения */
