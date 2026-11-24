@@ -516,64 +516,6 @@ h1, h2, h3 { margin: 0; font-weight: 500; }
 
 
 /* ---------- 9. Сцена 2: ноутбук и лампа ---------- */
-/* SVG точно поверх экрана ноутбука */
-.laptop-screen {
-  position: absolute;
-  left: 39.56%;
-  top: 54.82%;
-  width: 6.28%;
-  height: 7.44%;
-  z-index: 2;
-  pointer-events: none;
-  transform-origin: 0 0;
-  transform: skewY(-1.33deg) skewX(4.65deg);
-  backface-visibility: hidden;
-}
-.laptop-screen__bg { fill: #FBFBFA; opacity: .92; }
-.laptop-screen__base {
-  stroke: rgba(31, 41, 51, .16);
-  stroke-width: 1;
-  vector-effect: non-scaling-stroke;
-}
-.laptop-screen__bar {
-  fill: var(--teal);
-  opacity: .62;
-  transform-box: fill-box;
-  transform-origin: 50% 100%;
-  animation: bar-breathe 3.4s ease-in-out var(--d, 0s) infinite alternate;
-}
-@keyframes bar-breathe {
-  from { transform: scaleY(.6); }
-  to   { transform: scaleY(1); }
-}
-.laptop-screen__chart {
-  transform-box: fill-box;
-  transform-origin: 50% 100%;
-  animation: chart-breathe 4.8s ease-in-out infinite alternate;
-}
-@keyframes chart-breathe {
-  from { transform: scaleY(.88); }
-  to   { transform: scaleY(1.04); }
-}
-.laptop-screen__area { fill: rgba(74, 139, 140, .14); }
-.laptop-screen__line {
-  fill: none;
-  stroke: var(--teal-deep);
-  stroke-width: 1.1;
-  stroke-linejoin: round;
-  stroke-linecap: round;
-  vector-effect: non-scaling-stroke;
-  opacity: .75;
-}
-.laptop-screen__dot {
-  fill: var(--teal-deep);
-  opacity: .8;
-  animation: dot-blink 2.4s ease-in-out infinite;
-}
-@keyframes dot-blink {
-  0%, 100% { opacity: .8; }
-  50%      { opacity: .25; }
-}
 
 /* Зона наведения стола (включает лампу) */
 .desk-zone {
@@ -671,11 +613,6 @@ h1, h2, h3 { margin: 0; font-weight: 500; }
   }
   /* При приближении в сцене 1 («Обо мне») скрываем видео, оставляя чёткое статичное фото */
   .js body.is-drawer-open:not(.is-classic) .scene--1.is-zoomed .scene-video {
-    opacity: 0;
-    transition: opacity .3s ease;
-  }
-  /* При приближении в сцене 2 скрываем SVG-анимацию поверх экрана ноутбука, оставляя чистое фото */
-  .js body.is-drawer-open:not(.is-classic) .scene--2.is-zoomed .laptop-screen {
     opacity: 0;
     transition: opacity .3s ease;
   }
@@ -876,6 +813,7 @@ h1, h2, h3 { margin: 0; font-weight: 500; }
   flex: 1;
   overflow-y: auto;
   overscroll-behavior: contain;
+  overflow-anchor: none;              /* не даём браузеру «восстанавливать» прокрутку при смене панели */
   -webkit-overflow-scrolling: touch;
   padding: clamp(28px, 4vh, 44px) clamp(24px, 3vw, 48px) 72px;
 }
@@ -1459,9 +1397,6 @@ body.is-drawer-open { overflow: hidden; }
 /* ---------- 18. Уменьшение движения ---------- */
 @media (prefers-reduced-motion: reduce) {
   .marquee__track,
-  .laptop-screen__bar,
-  .laptop-screen__chart,
-  .laptop-screen__dot,
   .hotspot::after { animation: none; }
   .marquee__track { transform: none; }
   .js .panorama__track:has(.scene.is-active) .scene:not(.is-active) .wall { transform: none; }
@@ -1476,4 +1411,235 @@ body.is-drawer-open { overflow: hidden; }
   .hl-zone,
   .toast { transition-duration: .01ms !important; }
   .acc::details-content { transition: none; }
+}
+
+
+/* ---------- 19. Анимации: вход, имя, маячки ---------- */
+
+/* Имя в шапке: при наведении по буквам «протекает» бирюзово-песочный градиент */
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .topbar__brand {
+    background-image: linear-gradient(100deg,
+      var(--teal-deep) 0%,
+      var(--teal) 18%,
+      var(--oak) 36%,
+      var(--ink) 52%,
+      var(--ink) 100%);
+    background-size: 230% 100%;
+    background-position: 100% 0;
+    background-repeat: no-repeat;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    transition: background-position .9s var(--ease-out);
+  }
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .topbar__brand:hover,
+  .topbar__brand:focus-visible { background-position: 0% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .topbar__brand { transition: none; }
+  .topbar__brand:hover,
+  .topbar__brand:focus-visible { background-position: 0% 0; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Мягкий вход первого экрана и классической вступительной части */
+  .js .hero-title,
+  .js .hero-lead,
+  .js .hero-actions,
+  .js .marquee,
+  .js .classic-intro__title,
+  .js .classic-intro__lead,
+  .js .classic-intro__actions {
+    animation: hero-in .85s var(--ease-out) both;
+  }
+  .js .hero-title,
+  .js .classic-intro__title { animation-delay: .05s; }
+  .js .hero-lead,
+  .js .classic-intro__lead { animation-delay: .20s; }
+  .js .hero-actions,
+  .js .classic-intro__actions { animation-delay: .34s; }
+  .js .marquee { animation-delay: .46s; }
+
+  /* Маячок пульсирует только у сцены, которая сейчас на экране */
+  .js body:not(.is-classic) .scene:not(.is-active) .hotspot::after { animation: none; }
+}
+
+@keyframes hero-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: none; }
+}
+
+
+/* ---------- 20. Микроанимации: заголовок, кнопки, панели, схема ИИ ---------- */
+:root {
+  --dur-1: .16s;
+  --dur-2: .28s;
+  --dur-3: .56s;
+  --dur-4: .9s;
+  --ease-inout: cubic-bezier(.65, 0, .35, 1);
+}
+
+/* Заголовок по строкам: каждая строка входит снизу с задержкой */
+.hero-line { display: block; }
+.hero-line > span { display: block; }
+@media (prefers-reduced-motion: no-preference) {
+  .js .hero-line > span {
+    animation: line-in var(--dur-4) var(--ease-out) both;
+  }
+  .js .hero-line:nth-child(1) > span { animation-delay: .05s; }
+  .js .hero-line:nth-child(2) > span { animation-delay: .15s; }
+  .js .hero-line:nth-child(3) > span { animation-delay: .25s; }
+}
+@keyframes line-in {
+  from { opacity: 0; transform: translateY(.4em); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Штрих под словом «доверяют» */
+.hero-title em,
+.classic-intro__title em { position: relative; }
+.hero-title em::after,
+.classic-intro__title em::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0;
+  bottom: -.04em;
+  height: max(2px, .025em);
+  border-radius: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .js .hero-title em::after,
+  .js .classic-intro__title em::after {
+    animation: underline-draw var(--dur-4) var(--ease-out) .8s both;
+  }
+}
+@keyframes underline-draw {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+/* Кнопки: световой блик под курсором, нажатие, бегущий блик у основной */
+.btn { position: relative; overflow: hidden; isolation: isolate; }
+.btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(140px 140px at var(--mx, 50%) var(--my, 50%),
+              rgba(255, 255, 255, .35), transparent 70%);
+  opacity: 0;
+  transition: opacity var(--dur-2) ease;
+  pointer-events: none;
+}
+.btn:hover::after,
+.btn:focus-visible::after { opacity: 1; }
+.btn:active { transform: scale(.985); }
+@media (prefers-reduced-motion: no-preference) {
+  .btn--primary::before {
+    content: "";
+    position: absolute;
+    top: -20%; bottom: -20%;
+    left: -60%;
+    width: 40%;
+    z-index: -1;
+    background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .30), transparent);
+    transform: skewX(-18deg);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .btn--primary:hover::before { animation: btn-sheen .9s var(--ease-out); }
+}
+@keyframes btn-sheen {
+  from { left: -60%; opacity: 0; }
+  25%  { opacity: 1; }
+  to   { left: 120%; opacity: 0; }
+}
+
+/* Кнопка «Скопировать email» на миг становится подтверждением */
+.btn.is-copied {
+  background: var(--teal-deep);
+  border-color: var(--teal-deep);
+  color: #fff;
+}
+
+/* Капсулы появляются по очереди у активной сцены */
+@media (prefers-reduced-motion: no-preference) {
+  .js body:not(.is-classic) .hotspot { opacity: 0; }
+  .js body:not(.is-classic) .scene.is-active .hotspot {
+    animation: hs-in var(--dur-3) var(--ease-out) both;
+  }
+  .js body:not(.is-classic) .scene.is-active .hotspot:nth-of-type(2) { animation-delay: .08s; }
+  .js body:not(.is-classic) .scene.is-active .hotspot:nth-of-type(3) { animation-delay: .16s; }
+  .js body:not(.is-classic) .scene.is-active .hotspot:nth-of-type(4) { animation-delay: .24s; }
+}
+@keyframes hs-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Содержимое панели в ящике появляется каскадом */
+@media (prefers-reduced-motion: no-preference) {
+  .drawer.is-open .drawer__body > .panel { animation: panel-in var(--dur-3) var(--ease-out) both; }
+  .drawer.is-open .drawer__body > .panel > * { animation: rise-in var(--dur-3) var(--ease-out) both; }
+  .drawer.is-open .drawer__body > .panel > *:nth-child(1) { animation-delay: .02s; }
+  .drawer.is-open .drawer__body > .panel > *:nth-child(2) { animation-delay: .06s; }
+  .drawer.is-open .drawer__body > .panel > *:nth-child(3) { animation-delay: .10s; }
+  .drawer.is-open .drawer__body > .panel > *:nth-child(4) { animation-delay: .14s; }
+  .drawer.is-open .drawer__body > .panel > *:nth-child(5) { animation-delay: .18s; }
+  .drawer.is-open .drawer__body > .panel > *:nth-child(n+6) { animation-delay: .22s; }
+}
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Схема «1С → ИИ-агент → отчёт» в панели нейросетей */
+.ai-flow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 1.5em 0 0;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .55);
+}
+.ai-flow__node {
+  padding: 8px 14px;
+  border: 1px solid rgba(46, 125, 127, .35);
+  border-radius: 999px;
+  font: 500 13px/1.2 var(--sans);
+  color: var(--teal-deep);
+  white-space: nowrap;
+}
+.ai-flow__node--accent {
+  background: var(--teal-deep);
+  border-color: var(--teal-deep);
+  color: #fff;
+}
+.ai-flow__link {
+  flex: 1 1 36px;
+  min-width: 28px;
+  height: 1px;
+  background-image: linear-gradient(90deg, rgba(46, 125, 127, .55) 50%, transparent 50%);
+  background-size: 8px 1px;
+  background-repeat: repeat-x;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ai-flow__link { animation: flow-march 1.1s linear infinite; }
+}
+@keyframes flow-march {
+  from { background-position: 0 0; }
+  to   { background-position: 16px 0; }
 }

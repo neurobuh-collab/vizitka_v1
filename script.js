@@ -734,7 +734,51 @@ document.documentElement.classList.remove('no-js'); document.documentElement.cla
     drawerState.homeNext = panel.nextSibling;
     els.drawerBody.appendChild(panel);
     if (els.drawerTitle) els.drawerTitle.textContent = panelTitle(panel);
+    resetAccordions(panel);
     els.drawerBody.scrollTop = 0;
+    if (panel.getAttribute('data-panel') === 'about') animateStats(panel);
+    /* Ещё раз после отрисовки: при смене панели браузер успевает восстановить прокрутку */
+    requestAnimationFrame(function () {
+      if (drawerState.panel === panel) els.drawerBody.scrollTop = 0;
+    });
+  }
+
+  /* Аккордеоны в панели: первый раскрыт, остальные закрыты — подсказка, что их можно раскрывать */
+  function resetAccordions(panel) {
+    var list = $$('details', panel);
+    for (var i = 0; i < list.length; i++) {
+      if (i === 0) list[i].setAttribute('open', '');
+      else list[i].removeAttribute('open');
+    }
+  }
+
+  /* Цифры в «Обо мне» считаются от нуля до значения */
+  function formatCount(n) {
+    var s = String(n);
+    return s.length > 3 ? s.replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0') : s;
+  }
+
+  function animateStats(panel) {
+    if (state.reduced) return;
+    $$('.stat__num', panel).forEach(function (el) {
+      if (el.getAttribute('data-counted') === '1') return;
+      var text = (el.textContent || '').trim();
+      var digits = text.replace(/[^\d]/g, '');
+      if (!digits) return;
+      var to = parseInt(digits, 10);
+      var suffix = text.replace(/[\d\s\u00A0]/g, '');
+      el.setAttribute('data-counted', '1');
+      var started = 0;
+      function step(now) {
+        if (!started) started = now;
+        var p = Math.min(1, (now - started) / 900);
+        var eased = 1 - Math.pow(1 - p, 3);
+        el.textContent = formatCount(Math.round(to * eased)) + suffix;
+        if (p < 1) requestAnimationFrame(step);
+        else el.textContent = formatCount(to) + suffix;
+      }
+      requestAnimationFrame(step);
+    });
   }
 
   function unmountPanel() {
@@ -863,6 +907,7 @@ document.documentElement.classList.remove('no-js'); document.documentElement.cla
 
     if (drawerState.open) {
       if (drawerState.panel === panel) {
+        resetAccordions(panel);
         els.drawerBody.scrollTop = 0;
         focusDrawer();
         return true;
@@ -1105,9 +1150,24 @@ document.documentElement.classList.remove('no-js'); document.documentElement.cla
     if (!text) return;
     copyText(text, btn).then(function () {
       showToast('Email скопирован');
+      flashCopied(btn);
     }, function () {
       showToast('Не удалось скопировать — адрес: ' + text);
     });
+  }
+
+  /* Кнопка на мгновение превращается в «Скопировано ✓» и возвращается обратно */
+  function flashCopied(btn) {
+    if (!btn) return;
+    if (btn.__copyTimer) clearTimeout(btn.__copyTimer);
+    if (btn.__copyOrig == null) btn.__copyOrig = btn.innerHTML;
+    btn.classList.add('is-copied');
+    btn.textContent = 'Скопировано ✓';
+    btn.__copyTimer = setTimeout(function () {
+      btn.classList.remove('is-copied');
+      btn.innerHTML = btn.__copyOrig;
+      btn.__copyTimer = 0;
+    }, 1600);
   }
 
   var toastTimer = 0;
