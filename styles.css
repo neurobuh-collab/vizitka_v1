@@ -1580,25 +1580,7 @@ body.is-drawer-open { overflow: hidden; }
   to   { opacity: 1; }
 }
 
-/* Содержимое панели в ящике появляется каскадом */
-@media (prefers-reduced-motion: no-preference) {
-  .drawer.is-open .drawer__body > .panel { animation: panel-in var(--dur-3) var(--ease-out) both; }
-  .drawer.is-open .drawer__body > .panel > * { animation: rise-in var(--dur-3) var(--ease-out) both; }
-  .drawer.is-open .drawer__body > .panel > *:nth-child(1) { animation-delay: .02s; }
-  .drawer.is-open .drawer__body > .panel > *:nth-child(2) { animation-delay: .06s; }
-  .drawer.is-open .drawer__body > .panel > *:nth-child(3) { animation-delay: .10s; }
-  .drawer.is-open .drawer__body > .panel > *:nth-child(4) { animation-delay: .14s; }
-  .drawer.is-open .drawer__body > .panel > *:nth-child(5) { animation-delay: .18s; }
-  .drawer.is-open .drawer__body > .panel > *:nth-child(n+6) { animation-delay: .22s; }
-}
-@keyframes panel-in {
-  from { opacity: 0; transform: translateY(14px); }
-  to   { opacity: 1; transform: none; }
-}
-@keyframes rise-in {
-  from { opacity: 0; transform: translateY(10px); }
-  to   { opacity: 1; transform: none; }
-}
+/* Каскад содержимого панели в ящике перенесён в секцию 23 (.drawer-item) */
 
 /* Схема «1С → ИИ-агент → отчёт» в панели нейросетей */
 .ai-flow {
@@ -1701,10 +1683,9 @@ body.is-drawer-open { overflow: hidden; }
 
 
 /* =====================================================================
-   22. Полировки премиальности (план-2026, этап 1)
-   A1 — пословный вход заголовка
+   22. Полировки премиальности (план-2026, этап 1–2)
+   A1 — пословный вход заголовка · A3 — свечение «доверяют»
    F21 — подчёркивание контактов · F22 — пульс «Скопировано» · G25 — выделение
-   (A2 — курсорный параллакс — убрано: дёргался)
    ===================================================================== */
 
 /* A1: слова заголовка — inline-block, входят каскадом снизу.
@@ -1721,6 +1702,23 @@ body.is-drawer-open { overflow: hidden; }
 @keyframes word-in {
   from { opacity: 0; transform: translateY(.4em); }
   to   { opacity: 1; transform: none; }
+}
+
+/* A3: мягкое одноразовое свечение слова «доверяют» на самом `em` (без background-clip: text) */
+.hero-title em,
+.classic-intro__title em {
+  color: var(--teal-deep);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .js .hero-title em,
+  .js .classic-intro__title em {
+    animation: em-glow 1.3s var(--ease-out) 1.1s 1 both;
+  }
+}
+@keyframes em-glow {
+  0%   { text-shadow: 0 0 0 rgba(74, 139, 140, 0); }
+  40%  { text-shadow: 0 0 18px rgba(74, 139, 140, .55); }
+  100% { text-shadow: 0 0 0 rgba(74, 139, 140, 0); }
 }
 
 /* G25: кастомное выделение текста */
@@ -1752,128 +1750,115 @@ body.is-drawer-open { overflow: hidden; }
 
 
 /* =====================================================================
-   23. Этап 2: A3 — блик по слову «доверяют» · E16 — stagger списков
+   23. Этап 3: Индикатор чтения ящика + каскад текста (заголовок → подзаголовок → текст)
    ===================================================================== */
 
-/* A3: мягкое свечение слова «доверяют».
-   КЛЮЧ: анимируем сам `em`, а НЕ `.hero-word`. Иначе правило перезаписывает
-   A1-анимацию `word-in` у слова, и оно навсегда остаётся `opacity:0` (пропадает).
-   text-shadow наследуется словом — свечение видно, а вход слова не ломается. */
-@media (prefers-reduced-motion: no-preference) {
-  .js .hero-title em,
-  .js .classic-intro__title em {
-    animation: em-glow 1.4s ease-out 1.1s both;
-  }
+/* Тонкая линия прогресса чтения под шапкой ящика (2px) */
+.drawer__head {
+  position: relative;
 }
-@keyframes em-glow {
-  0%   { text-shadow: 0 0 0 rgba(74, 139, 140, 0); }
-  35%  { text-shadow: 0 0 18px rgba(74, 139, 140, .55); }
-  100% { text-shadow: 0 0 0 rgba(74, 139, 140, 0); }
+.drawer__progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--teal-deep);
+  transform-origin: 0 50%;
+  transform: scaleX(var(--read-progress, 0));
+  opacity: 0;
+  transition: opacity .25s ease;
+  pointer-events: none;
 }
-
-/* E16: пункты списков в панели входят каскадом при открытии ящика.
-   Задержку --li-i ставит script.js (staggerListItems). */
-@media (prefers-reduced-motion: no-preference) {
-  .js body:not(.is-classic) .drawer.is-open .drawer__body .panel li {
-    animation: li-in .5s var(--ease-out) backwards;
-    animation-delay: calc(.1s + var(--li-i, 0) * 40ms);
-  }
-}
-@keyframes li-in {
-  from { opacity: 0; transform: translateY(10px); }
-  to   { opacity: 1; transform: none; }
+.drawer__panel.is-scrollable .drawer__progress {
+  opacity: 1;
 }
 
-/* =====================================================================
-   22. Пословный вход заголовка и одноразовый блик по слову «доверяют»
-   ===================================================================== */
-.hero-word {
-  display: inline-block;
+/* Деликатный градиент внизу ящика и лёгкая подсказка, пока панель не докручена */
+.drawer__panel::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 54px;
+  background: linear-gradient(to top, rgba(250, 249, 246, .95) 18%, rgba(250, 249, 246, 0) 100%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .35s ease;
+  z-index: 2;
+}
+.drawer__panel.has-more::after {
+  opacity: 1;
 }
 
+.drawer__scroll-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%) translateY(6px);
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid rgba(46, 125, 127, .24);
+  border-radius: 999px;
+  background: rgba(250, 249, 246, .92);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  color: var(--teal-deep);
+  font: 500 11.5px/1 var(--sans);
+  letter-spacing: .04em;
+  box-shadow: 0 6px 18px -10px rgba(31, 41, 51, .35);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .3s ease, transform .3s var(--ease-out);
+}
+.drawer__panel.show-hint .drawer__scroll-hint {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+.drawer__scroll-hint svg {
+  width: 12px;
+  height: 12px;
+  animation: hint-bob 1.8s ease-in-out infinite;
+}
+@keyframes hint-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(2.5px); }
+}
+
+/* Постепенное появление всех элементов внутри открытой панели ящика строго сверху вниз */
 @media (prefers-reduced-motion: no-preference) {
-  .js .hero-word {
+  .js body:not(.is-classic) .drawer__body .drawer-item {
     opacity: 0;
-    transform: translateY(.4em);
-    animation: word-in .7s var(--ease-out) both;
-    animation-delay: calc(var(--i, 0) * 70ms);
+    transform: translateY(14px);
+    transition: opacity .52s var(--ease-out), transform .52s var(--ease-out);
+    transition-delay: 0ms;
   }
-}
-
-@keyframes word-in {
-  from {
-    opacity: 0;
-    transform: translateY(.4em);
-  }
-  to {
+  .js body:not(.is-classic) .drawer.is-open .drawer__body .drawer-item.is-shown {
     opacity: 1;
     transform: none;
+    transition-delay: var(--item-delay, 0ms);
+  }
+
+  /* E19: сбалансированное зацикленное «зажигание» узлов схемы ИИ (цикл 3.3 с, шаг 1.1 с) */
+  .js body:not(.is-classic) .drawer__body .ai-flow.is-active .ai-flow__node {
+    animation: ai-node-ignite 3.3s ease-in-out infinite;
+    animation-delay: calc(var(--node-i, 0) * 1.1s);
   }
 }
 
-.hero-title em,
-.classic-intro__title em {
-  position: relative;
-  display: inline-block;
-  color: var(--teal-deep);
-  -webkit-text-fill-color: var(--teal-deep);
-}
-
-/* Мягкий одноразовый блик поверх слова «доверяют» (1.3 с, задержка 1.1 с) */
-@media (prefers-reduced-motion: no-preference) {
-  .js .hero-title em::before,
-  .js .classic-intro__title em::before {
-    content: attr(data-word);
-    position: absolute;
-    inset: 0;
-    color: #9EE3E5;
-    -webkit-text-fill-color: #9EE3E5;
-    pointer-events: none;
-    clip-path: inset(0 100% 0 0);
-    animation: sheen-sweep 1.3s var(--ease-out) 1.1s 1 normal forwards;
-  }
-}
-
-@keyframes sheen-sweep {
-  0% {
-    clip-path: inset(0 100% 0 0);
-    opacity: 0;
+@keyframes ai-node-ignite {
+  0%, 54%, 100% {
+    box-shadow: 0 0 0 0 rgba(46, 125, 127, 0);
+    border-color: rgba(46, 125, 127, .35);
+    transform: translateY(0);
   }
   20% {
-    opacity: .95;
-  }
-  55% {
-    clip-path: inset(0 0 0 0);
-    opacity: .95;
-  }
-  100% {
-    clip-path: inset(0 0 0 100%);
-    opacity: 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .hero-title em::before,
-  .classic-intro__title em::before {
-    display: none;
-    animation: none;
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .js body:not(.is-classic) .drawer.is-open .drawer__body .panel li {
-    animation: li-in .5s var(--ease-out) backwards;
-    animation-delay: calc(.1s + var(--li-i, 0) * 40ms);
-  }
-}
-
-@keyframes li-in {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
+    box-shadow: 0 8px 22px -4px rgba(74, 139, 140, .62);
+    border-color: rgba(46, 125, 127, .9);
+    transform: translateY(-2.5px);
   }
 }

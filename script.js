@@ -736,7 +736,7 @@ document.documentElement.classList.remove('no-js'); document.documentElement.cla
     if (els.drawerTitle) els.drawerTitle.textContent = panelTitle(panel);
     resetAccordions(panel);
     watchNote(panel);
-    staggerListItems(panel);
+    setupDrawerScrollReveal(panel);
     els.drawerBody.scrollTop = 0;
     if (panel.getAttribute('data-panel') === 'about') animateStats(panel);
     /* Ещё раз после отрисовки: при смене панели браузер успевает восстановить прокрутку */
@@ -805,6 +805,7 @@ document.documentElement.classList.remove('no-js'); document.documentElement.cla
   }
 
   function unmountPanel() {
+    disconnectDrawerObserver();
     var panel = drawerState.panel;
     if (!panel) return;
     var parent = (drawerState.homeParent && doc.contains(drawerState.homeParent)) ? drawerState.homeParent : els.library;
@@ -1317,7 +1318,8 @@ document.documentElement.classList.remove('no-js'); document.documentElement.cla
     });
   }
 
-  /* ================= Пословный вход заголовка (A1) ================= */
+  
+/* ================= Пословный вход заголовка (A1) ================= */
 function collectTextNodes(node, out) {
   if (!node) return;
   if (node.nodeType === 3) { out.push(node); return; }
@@ -1353,15 +1355,230 @@ function splitHeadlineWords() {
   });
 }
 
-/* ================= Stagger пунктов списка в панели (E16) ================= */
-function staggerListItems(panel) {
-  if (!panel) return;
-  var i = 0;
-  $$('li', panel).forEach(function (el) {
-    el.style.setProperty('--li-i', String(i++));
+/* ================= Прогресс чтения и постепенное появление текста в панелях ящика ================= */
+var drawerRevealTimers = [];
+var aiFlowTimers = [];
+var drawerHintDismissed = false;
+var activeDrawerPanel = null;
+var activeDrawerItems = [];
+var scrollRevealRaf = 0;
+
+function clearDrawerTimers() {
+  while (drawerRevealTimers.length) clearTimeout(drawerRevealTimers.pop());
+  while (aiFlowTimers.length) clearTimeout(aiFlowTimers.pop());
+  if (scrollRevealRaf) {
+    cancelAnimationFrame(scrollRevealRaf);
+    scrollRevealRaf = 0;
+  }
+}
+
+function disconnectDrawerObserver() {
+  clearDrawerTimers();
+  activeDrawerPanel = null;
+  activeDrawerItems = [];
+}
+
+function updateDrawerScrollUi() {
+  if (!els.drawerBody || !els.drawerPanel) return;
+  var el = els.drawerBody;
+  var maxScroll = el.scrollHeight - el.clientHeight;
+  var scrollable = maxScroll > 24;
+  els.drawerPanel.classList.toggle('is-scrollable', scrollable);
+  if (!scrollable) {
+    els.drawerPanel.style.setProperty('--read-progress', '0');
+    els.drawerPanel.classList.remove('has-more', 'show-hint');
+    return;
+  }
+  var st = el.scrollTop;
+  var progress = clamp(st / maxScroll, 0, 1);
+  els.drawerPanel.style.setProperty('--read-progress', progress.toFixed(4));
+  var atBottom = (maxScroll - st) < 20;
+  els.drawerPanel.classList.toggle('has-more', !atBottom);
+  if (st > 20) drawerHintDismissed = true;
+  els.drawerPanel.classList.toggle('show-hint', !atBottom && !drawerHintDismissed);
+}
+
+function triggerAiFlowIgnition(flowEl) {
+  if (!flowEl || flowEl.__ignited) return;
+  flowEl.__ignited = true;
+  var nodes = $$('.ai-flow__node', flowEl);
+  nodes.forEach(function (node, idx) {
+    node.classList.remove('is-lit');
+    node.style.setProperty('--node-i', String(idx));
+  });
+  if (state.reduced) return;
+  flowEl.classList.add('is-active');
+}
+
+function collectAccBodyItems(accEl, out) {
+  var bodyEl = $('.acc__body', accEl);
+  if (!bodyEl) return;
+  for (var c = bodyEl.firstElementChild; c; c = c.nextElementSibling) {
+    if (c.tagName === 'UL' || c.tagName === 'OL') {
+      for (var li = c.firstElementChild; li; li = li.nextElementSibling) {
+        if (li.tagName === 'LI') out.push(li);
+      }
+    } else {
+      out.push(c);
+    }
+  }
+}
+
+/* Строгий порядок сверху вниз внутри любой панели:
+   заголовок → подзаголовок/лид/тег → текст, пункты списков, карточки, аккордеоны, схема, кнопки */
+function collectDrawerItems(panel) {
+  var out = [];
+  if (!panel) return out;
+
+  function walkChildren(container) {
+    for (var el = container.firstElementChild; el; el = el.nextElementSibling) {
+      var cls = el.classList;
+      if (cls.contains('block')) {
+        walkChildren(el);
+      } else if (cls.contains('accs')) {
+        for (var det = el.firstElementChild; det; det = det.nextElementSibling) {
+          if (det.tagName === 'DETAILS') {
+            if (det.hasAttribute('open')) {
+              var sum = det.querySelector(':scope > summary');
+              if (sum) out.push(sum);
+              collectAccBodyItems(det, out);
+            } else {
+              out.push(det);
+            }
+          } else {
+            out.push(det);
+          }
+        }
+      } else if (
+        cls.contains('cases') ||
+        cls.contains('reviews') ||
+        cls.contains('contacts') ||
+        cls.contains('facts') ||
+        cls.contains('dash')
+      ) {
+        for (var item = el.firstElementChild; item; item = item.nextElementSibling) {
+          out.push(item);
+        }
+      } else {
+        out.push(el);
+      }
+    }
+  }
+
+  walkChildren(panel);
+  return out;
+}
+
+function scheduleItemReveal(target, delayMs) {
+  if (!target || target.dataset.revealScheduled === '1') return;
+  target.dataset.revealScheduled = '1';
+  var safeDelay = Math.max(0, Math.round(delayMs));
+  target.style.setProperty('--item-delay', safeDelay + 'ms');
+
+  var t = setTimeout(function () {
+    target.classList.add('is-shown');
+    if (target.classList.contains('ai-flow')) {
+      var flowTimer = setTimeout(function () {
+        triggerAiFlowIgnition(target);
+      }, safeDelay + 220);
+      aiFlowTimers.push(flowTimer);
+    }
+  }, 24);
+  drawerRevealTimers.push(t);
+}
+
+function evaluateVisibleDrawerItems(isInitialOpen) {
+  if (!activeDrawerPanel || !els.drawerBody || !activeDrawerItems.length) return;
+  if (state.reduced) {
+    activeDrawerItems.forEach(function (el) {
+      el.classList.add('is-shown');
+      if (el.classList.contains('ai-flow')) triggerAiFlowIgnition(el);
+    });
+    return;
+  }
+
+  var bodyRect = els.drawerBody.getBoundingClientRect();
+  var viewTop = bodyRect.top - 24;
+  var viewBottom = bodyRect.bottom - 12;
+  var batchIdx = 0;
+
+  // Сначала выезжает сам ящик, затем строго по очереди: заголовок → подзаголовок → текст
+  var baseDelay = isInitialOpen ? 200 : 20;
+  var stepDelay = isInitialOpen ? 90 : 75;
+
+  for (var i = 0; i < activeDrawerItems.length; i++) {
+    var el = activeDrawerItems[i];
+    if (el.dataset.revealScheduled === '1') continue;
+    var r = el.getBoundingClientRect();
+    if (r.top <= viewBottom && r.bottom >= viewTop) {
+      var delay = baseDelay + Math.min(batchIdx, 14) * stepDelay;
+      batchIdx++;
+      scheduleItemReveal(el, delay);
+    }
+  }
+}
+
+function onDrawerScrollReveal() {
+  updateDrawerScrollUi();
+  if (!activeDrawerPanel || !activeDrawerItems.length) return;
+  if (scrollRevealRaf) return;
+  scrollRevealRaf = requestAnimationFrame(function () {
+    scrollRevealRaf = 0;
+    evaluateVisibleDrawerItems(false);
   });
 }
 
+function setupDrawerScrollReveal(panel) {
+  disconnectDrawerObserver();
+  drawerHintDismissed = false;
+  if (!panel || !els.drawerBody) return;
+
+  activeDrawerPanel = panel;
+
+  // Снимаем старые классы со всех узлов панели
+  $$('.drawer-item', panel).forEach(function (el) {
+    el.classList.remove('drawer-item', 'is-shown');
+    el.style.removeProperty('--item-delay');
+    delete el.dataset.revealScheduled;
+  });
+  $$('.ai-flow', panel).forEach(function (flowEl) {
+    flowEl.__ignited = false;
+    flowEl.classList.remove('is-active');
+    $$('.ai-flow__node', flowEl).forEach(function (n) { n.classList.remove('is-lit'); });
+  });
+
+  var items = collectDrawerItems(panel);
+  activeDrawerItems = items;
+  if (!items.length) return;
+
+  if (state.reduced) {
+    items.forEach(function (el) {
+      el.classList.add('is-shown');
+      if (el.classList.contains('ai-flow')) triggerAiFlowIgnition(el);
+    });
+    updateDrawerScrollUi();
+    return;
+  }
+
+  // Прячем все элементы панели синхронно ДО первого кадра отрисовки
+  items.forEach(function (el) {
+    el.classList.add('drawer-item');
+  });
+
+  var wasAlreadyOpen = !!(els.drawer && els.drawer.classList.contains('is-open'));
+
+  requestAnimationFrame(function () {
+    updateDrawerScrollUi();
+    evaluateVisibleDrawerItems(!wasAlreadyOpen);
+
+    // Повторная проверка, когда выезд панели почти завершён (на случай изменения высоты шрифтов/картинок)
+    var tFollow = setTimeout(function () {
+      updateDrawerScrollUi();
+      evaluateVisibleDrawerItems(false);
+    }, 360);
+    drawerRevealTimers.push(tFollow);
+  });
+}
 /* ================= Адрес (#scene-N, #panel-name, #classic) ================= */
   function sceneIndexForPanel(name) {
     if (!isSafeName(name)) return -1;
@@ -1460,6 +1677,37 @@ function staggerListItems(panel) {
     if (els.drawer) {
       els.drawer.addEventListener('wheel', onDrawerWheel, { passive: false });
     }
+    if (els.drawerBody) {
+      els.drawerBody.addEventListener('scroll', onDrawerScrollReveal, { passive: true });
+    if (els.drawerBody) {
+      els.drawerBody.addEventListener('toggle', function (ev) {
+        var det = ev.target;
+        if (det && det.tagName === 'DETAILS' && det.open && activeDrawerPanel) {
+          var inner = [];
+          collectAccBodyItems(det, inner);
+          if (state.reduced) {
+            updateDrawerScrollUi();
+            return;
+          }
+          inner.forEach(function (el) {
+            el.classList.remove('is-shown');
+            delete el.dataset.revealScheduled;
+            el.classList.add('drawer-item');
+            if (activeDrawerItems.indexOf(el) === -1) activeDrawerItems.push(el);
+          });
+          requestAnimationFrame(function () {
+            updateDrawerScrollUi();
+            inner.forEach(function (el, idx) {
+              scheduleItemReveal(el, 30 + Math.min(idx, 10) * 65);
+            });
+          });
+        } else if (det && det.tagName === 'DETAILS') {
+          requestAnimationFrame(updateDrawerScrollUi);
+        }
+      }, true);
+    }
+
+    }
     $$('.drawer__backdrop').forEach(function (bd) {
       bd.addEventListener('wheel', function (e) { e.preventDefault(); }, { passive: false });
       bd.addEventListener('touchmove', function (e) { e.preventDefault(); }, { passive: false });
@@ -1481,9 +1729,9 @@ function staggerListItems(panel) {
     state.classic = hash === '#classic' || storageGet() === 'classic';
 
     setupVideos();
+    splitHeadlineWords();
     initLamp();
     initShelves();
-    splitHeadlineWords();
     bindEvents();
     applyMode(true);
     handleHash(hash, true);
