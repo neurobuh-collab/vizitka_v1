@@ -1035,15 +1035,32 @@ body.is-drawer-open { overflow: hidden; }
 .acc--svc .acc__plus { grid-area: plus; }
 .acc--svc .acc__body { padding-left: calc(2.4em + 16px); }
 
-/* Плавное раскрытие там, где браузер умеет анимировать height: auto */
+/* E17: плавное раскрытие и мягкий фейд аккордеонов */
 @supports (interpolate-size: allow-keywords) {
   .acc { interpolate-size: allow-keywords; }
   .acc::details-content {
     block-size: 0;
+    opacity: 0;
     overflow: clip;
-    transition: block-size .45s var(--ease-out), content-visibility .45s allow-discrete;
+    transition: block-size .45s var(--ease-out),
+                opacity .35s ease,
+                content-visibility .45s allow-discrete;
   }
-  .acc[open]::details-content { block-size: auto; }
+  .acc[open]::details-content {
+    block-size: auto;
+    opacity: 1;
+  }
+}
+@supports not (interpolate-size: allow-keywords) {
+  @media (prefers-reduced-motion: no-preference) {
+    .acc[open] > .acc__body {
+      animation: acc-fade .35s var(--ease-out) both;
+    }
+  }
+}
+@keyframes acc-fade {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
 }
 
 /* Панель «Обо мне»: портрет + цифры 2×2 */
@@ -1479,21 +1496,7 @@ body.is-drawer-open { overflow: hidden; }
   --ease-inout: cubic-bezier(.65, 0, .35, 1);
 }
 
-/* Заголовок по строкам: каждая строка входит снизу с задержкой */
-.hero-line { display: block; }
-.hero-line > span { display: block; }
-@media (prefers-reduced-motion: no-preference) {
-  .js .hero-line > span {
-    animation: line-in var(--dur-4) var(--ease-out) both;
-  }
-  .js .hero-line:nth-child(1) > span { animation-delay: .05s; }
-  .js .hero-line:nth-child(2) > span { animation-delay: .15s; }
-  .js .hero-line:nth-child(3) > span { animation-delay: .25s; }
-}
-@keyframes line-in {
-  from { opacity: 0; transform: translateY(.4em); }
-  to   { opacity: 1; transform: none; }
-}
+/* .hero-line удалён — заголовок анимируется пословно через .hero-word (A1) */
 
 /* Штрих под словом «доверяют» */
 .hero-title em,
@@ -1655,10 +1658,7 @@ body.is-drawer-open { overflow: hidden; }
   .marquee__track { animation-duration: 60s; }
   .marquee:hover .marquee__track { animation-play-state: paused; }
 
-  /* Переговорная: приглашение входит мягко */
-  .scene--4.is-active .invite-title {
-    animation: invite-in .8s var(--ease-out) .1s both;
-  }
+  /* Переговорная: пофразная анимация перенесена в секцию 29 */
 
   /* Каретка у подписи про Claude: мигает и гаснет, когда подпись в поле зрения */
   .panel__note::after {
@@ -1860,5 +1860,588 @@ body.is-drawer-open { overflow: hidden; }
     box-shadow: 0 8px 22px -4px rgba(74, 139, 140, .62);
     border-color: rgba(46, 125, 127, .9);
     transform: translateY(-2.5px);
+  }
+}
+
+/* =====================================================================
+   24. Этап 4: Шапка и навигатор (D13 масштаб номера · D14 сжатие шапки · D15 линия прогресса)
+   ===================================================================== */
+
+/* D14: плавное сжатие шапки при скролле / прогулке по кабинету */
+.topbar {
+  transition: height .35s var(--ease-out),
+              background-color .35s ease,
+              border-color .35s ease,
+              box-shadow .35s ease;
+}
+.topbar.is-scrolled {
+  height: calc(var(--topbar-h) - 10px);
+  background: rgba(250, 249, 246, .84);
+  border-bottom-color: rgba(31, 41, 51, .11);
+  box-shadow: 0 10px 28px -20px rgba(31, 41, 51, .32);
+}
+@media (max-width: 767px) {
+  .topbar.is-scrolled {
+    height: calc(var(--topbar-h) - 6px);
+  }
+}
+
+/* D15: тонкая бирюзовая линия прогресса прогулки внизу шапки (GPU scaleX) */
+.topbar__progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: linear-gradient(90deg, var(--teal) 0%, var(--teal-deep) 100%);
+  transform-origin: 0 50%;
+  transform: scaleX(var(--progress, 0));
+  opacity: 0;
+  transition: opacity .3s ease;
+  pointer-events: none;
+  will-change: transform;
+}
+.topbar.has-progress .topbar__progress {
+  opacity: 1;
+}
+
+/* D13: мягкий акцентный масштаб активного номера в навигаторе «Прогулка по кабинету» */
+.walk__num {
+  display: inline-block;
+  transform-origin: 50% 65%;
+  transition: transform .35s var(--ease-out), color .25s ease;
+}
+.walk__item.is-active .walk__num,
+.walk__item[aria-current="step"] .walk__num {
+  transform: scale(1.22) translateY(-1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topbar,
+  .topbar__progress,
+  .walk__num {
+    transition-duration: .01ms !important;
+  }
+}
+
+/* =====================================================================
+   25. Этап 5: Пульс лампы (B8) · Счётчики статистики (E18) · Цифры tabular-nums (G24)
+   ===================================================================== */
+
+/* G24: монолитное выравнивание всех цифр без дёргания ширины при счёте и листании */
+.stat__num,
+.walk__num,
+.scene-marker__num,
+.acc--svc .acc__num,
+.case__num,
+.panel__meta {
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+/* B8: живое тёплое дыхание настольной лампы на сцене 2.
+   Лампа загорается при наведении на стол/кнопки (или при открытой панели услуг)
+   и полностью гаснет при уводе мышки. */
+.lamp-light::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(48% 20% at 50% 80%, rgba(255, 224, 162, .48), rgba(255, 214, 138, .12) 60%, transparent 100%),
+    radial-gradient(18% 20% at 47% 28%, rgba(255, 242, 202, .72), transparent 100%);
+  transform-origin: 48% 35%;
+  opacity: .55;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .js body:not(.is-classic) .scene--2.is-lamp-on .lamp-light::after,
+  .js body:not(.is-classic) .scene--2:has(.desk-zone:hover) .lamp-light::after,
+  .js body:not(.is-classic) .scene--2:has(.hotspot:hover) .lamp-light::after,
+  .js body:not(.is-classic) .scene--2:has(.hotspot:focus-visible) .lamp-light::after,
+  .js body:not(.is-classic) .scene--2.is-zoomed[data-zoom-panel="services"] .lamp-light::after {
+    animation: lamp-breathe 4.4s ease-in-out infinite;
+  }
+}
+@keyframes lamp-breathe {
+  0%, 100% {
+    opacity: .42;
+    transform: scale(.97);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+}
+
+/* E18: мягкая финальная фиксация счётчика статистики в «Обо мне» */
+.stat__num {
+  display: inline-block;
+  transform-origin: 0 70%;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .stat__num.is-settled {
+    animation: stat-settle .55s var(--ease-out) both;
+  }
+}
+@keyframes stat-settle {
+  0% {
+    transform: scale(1);
+    text-shadow: 0 0 0 rgba(74, 139, 140, 0);
+  }
+  40% {
+    transform: scale(1.045);
+    text-shadow: 0 0 14px rgba(74, 139, 140, .35);
+  }
+  100% {
+    transform: scale(1);
+    text-shadow: 0 0 0 rgba(74, 139, 140, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lamp-light::after,
+  .stat__num.is-settled {
+    animation: none !important;
+  }
+}
+
+/* =====================================================================
+   26. Этап 6: Единые kicker/overline (G23) · Текстура бумаги/штукатурки (G26)
+   ===================================================================== */
+
+:root {
+  --kicker-size: 11.5px;
+  --kicker-track: .15em;
+  --grain-svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.65'/%3E%3C/svg%3E");
+}
+
+/* G23: единая система надзаголовков и служебных подписей */
+.drawer__kicker,
+.panel__h,
+.contact__label,
+.review__author {
+  font-family: var(--sans);
+  font-size: var(--kicker-size);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: var(--kicker-track);
+  text-transform: uppercase;
+}
+.scene-marker {
+  letter-spacing: var(--kicker-track);
+}
+.walk__title {
+  letter-spacing: var(--kicker-track);
+}
+
+/* Деликатный штрих-акцент в тон тонких маркеров .dash у шапки ящика и подписи отзывов */
+.drawer__kicker,
+.review__author {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.drawer__kicker::before,
+.review__author::before {
+  content: "";
+  flex: none;
+  width: 16px;
+  height: 1px;
+  background: var(--teal);
+  opacity: .75;
+}
+.drawer__kicker:empty::before {
+  display: none;
+}
+
+/* G26: еле заметная статичная фактура матовой бумаги/штукатурки только на молочных
+   поверхностях чтения (.drawer__panel и .library) — фото комнат не затрагиваются и не темнеют */
+.drawer__panel {
+  isolation: isolate;
+}
+.drawer__head,
+.drawer__body {
+  position: relative;
+  z-index: 1;
+}
+.drawer__panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-image: var(--grain-svg);
+  background-size: 160px 160px;
+  background-repeat: repeat;
+  opacity: .032;
+  pointer-events: none;
+}
+
+.library {
+  position: relative;
+  isolation: isolate;
+}
+.library > * {
+  position: relative;
+  z-index: 1;
+}
+.library::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-image: var(--grain-svg);
+  background-size: 160px 160px;
+  background-repeat: repeat;
+  opacity: .03;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .acc[open] > .acc__body {
+    animation: none;
+  }
+}
+
+/* =====================================================================
+   27. Кейсы: плавное выдвижение карточки вперёд при наведении мыши
+   ===================================================================== */
+
+.case {
+  position: relative;
+  margin-left: -12px;
+  margin-right: -12px;
+  padding: 24px 12px;
+  border-radius: 16px;
+  transition: transform .38s var(--ease-out),
+              background-color .32s ease,
+              box-shadow .38s var(--ease-out),
+              border-color .28s ease;
+}
+.case__num {
+  display: inline-block;
+  transition: color .28s ease, transform .35s var(--ease-out);
+}
+.case__title {
+  transition: color .28s ease;
+}
+
+/* Когда элемент ящика уже проявился (.is-revealed), возвращаем нулевую задержку
+   и плавный переход для hover-эффектов */
+@media (prefers-reduced-motion: no-preference) {
+  .js body:not(.is-classic) .drawer.is-open .drawer__body .case.drawer-item.is-shown.is-revealed {
+    transition: opacity .52s var(--ease-out),
+                transform .38s var(--ease-out),
+                background-color .32s ease,
+                box-shadow .38s var(--ease-out),
+                border-color .28s ease;
+    transition-delay: 0ms;
+  }
+}
+
+@media (hover: hover) {
+  .case:hover,
+  .case:has(:focus-visible),
+  .js body:not(.is-classic) .drawer.is-open .drawer__body .case.drawer-item.is-shown:hover,
+  .js body:not(.is-classic) .drawer.is-open .drawer__body .case.drawer-item.is-shown:has(:focus-visible) {
+    z-index: 2;
+    background: rgba(255, 255, 255, .86);
+    border-top-color: transparent;
+    box-shadow: 0 18px 36px -22px rgba(31, 41, 51, .28),
+                0 0 0 1px rgba(46, 125, 127, .18);
+    transform: translate3d(0, -3px, 0) scale(1.018);
+    transition-delay: 0ms;
+  }
+  .case:hover + .case,
+  .case:has(:focus-visible) + .case {
+    border-top-color: transparent;
+  }
+  .case:hover .case__num,
+  .case:has(:focus-visible) .case__num {
+    color: var(--teal-deep);
+    transform: translateX(2px);
+  }
+  .case:hover .case__title,
+  .case:has(:focus-visible) .case__title {
+    color: var(--teal-deep);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .case,
+  .case__num,
+  .case__title {
+    transition-duration: .01ms !important;
+  }
+  .case:hover,
+  .case:has(:focus-visible),
+  .js body:not(.is-classic) .drawer.is-open .drawer__body .case.drawer-item.is-shown:hover,
+  .js body:not(.is-classic) .drawer.is-open .drawer__body .case.drawer-item.is-shown:has(:focus-visible) {
+    transform: none;
+  }
+  .case:hover .case__num,
+  .case:has(:focus-visible) .case__num {
+    transform: none;
+  }
+}
+
+/* =====================================================================
+   28. Анти-FOUT при старте: ждём шрифты и разбиение заголовка без мелькания
+   ===================================================================== */
+
+.topbar {
+  transition: height .35s var(--ease-out),
+              background-color .35s ease,
+              border-color .35s ease,
+              box-shadow .35s ease,
+              opacity .35s ease;
+}
+.walk {
+  transition: opacity .35s ease;
+}
+
+/* Пока грузятся кириллические шрифты и стартует script.js, фон комнаты уже на экране,
+   а тексты первого экрана, шапка и навигатор не мелькают системным шрифтом.
+   Используем opacity: 0 (без visibility: hidden / display: none), чтобы браузер
+   не откладывал загрузку .woff2. */
+.js.is-booting .topbar,
+.js.is-booting .walk,
+.js.is-booting .hero-title,
+.js.is-booting .hero-lead,
+.js.is-booting .hero-actions,
+.js.is-booting .marquee,
+.js.is-booting .classic-intro__title,
+.js.is-booting .classic-intro__lead,
+.js.is-booting .classic-intro__actions {
+  opacity: 0 !important;
+  pointer-events: none;
+}
+
+/* Удерживаем входные анимации первого экрана до снятия is-booting, чтобы они
+   начались один раз и сразу в финальных шрифтах Cormorant Garamond + Inter */
+.js.is-booting .hero-word,
+.js.is-booting .hero-lead,
+.js.is-booting .hero-actions,
+.js.is-booting .marquee,
+.js.is-booting .hero-title em,
+.js.is-booting .hero-title em::after,
+.js.is-booting .classic-intro__lead,
+.js.is-booting .classic-intro__actions,
+.js.is-booting .classic-intro__title em,
+.js.is-booting .classic-intro__title em::after {
+  animation: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topbar,
+  .walk {
+    transition-duration: .01ms !important;
+  }
+}
+
+/* =====================================================================
+   29. Сцена 4 («Переговорная»): прежняя раскладка по строкам, сияние и блик CTA
+   ===================================================================== */
+
+/* Сохраняем исходное естественное течение текста по строкам (text-wrap: balance) */
+.invite-phrase,
+.invite-title em {
+  display: inline;
+}
+.invite-title em {
+  color: var(--teal-deep);
+}
+
+/* Убираем двойной сдвиг родительского .wall на сцене 4 */
+@media (min-width: 768px) {
+  .js .panorama__track:has(.scene.is-active) .scene--4:not(.is-active) .wall--invite {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Исходное состояние до прихода на сцену 4 */
+  .js body:not(.is-classic) .panorama__track:has(.scene.is-active) .scene--4:not(.is-active) .invite-phrase {
+    opacity: 0;
+  }
+  .js body:not(.is-classic) .panorama__track:has(.scene.is-active) .scene--4:not(.is-active) .invite-actions {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+
+  /* Мягкий подъём общего блока текста + пофразное проявление без слома строк */
+  .js body:not(.is-classic) .scene--4.is-active .invite-title {
+    animation: invite-lift .85s var(--ease-out) .12s both;
+  }
+  .js body:not(.is-classic) .scene--4.is-active .invite-phrase--1 {
+    animation: invite-fade .75s var(--ease-out) .12s both;
+  }
+  .js body:not(.is-classic) .scene--4.is-active .invite-phrase--2 {
+    animation: invite-fade .78s var(--ease-out) .42s both;
+  }
+  .js body:not(.is-classic) .scene--4.is-active .invite-actions {
+    animation: invite-in .72s var(--ease-out) .72s both;
+  }
+
+  /* Мягкое одноразовое сияние фразы «Буду рада обсудить,» (без подчёркивания) */
+  .js body:not(.is-classic) .scene--4.is-active .invite-title em {
+    animation: em-glow 1.3s var(--ease-out) 1.05s 1 both;
+  }
+
+  /* Одноразовый световой блик по кнопке Telegram после её появления */
+  .js body:not(.is-classic) .scene--4.is-active .invite-cta::before {
+    animation: invite-cta-sheen .95s var(--ease-out) 1.48s 1 both;
+  }
+}
+
+/* Повторный блик при наведении мыши на кнопку Telegram остаётся рабочим */
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .js body:not(.is-classic) .scene--4.is-active .invite-cta:hover::before {
+    animation: btn-sheen .9s var(--ease-out);
+  }
+}
+
+@keyframes invite-lift {
+  from { transform: translateY(12px); }
+  to   { transform: none; }
+}
+@keyframes invite-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes invite-cta-sheen {
+  from { left: -60%; opacity: 0; }
+  25%  { opacity: 1; }
+  to   { left: 120%; opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scene--4 .invite-title,
+  .scene--4 .invite-phrase,
+  .scene--4 .invite-actions,
+  .scene--4 .invite-title em,
+  .scene--4 .invite-cta::before {
+    animation: none !important;
+  }
+}
+
+/* =====================================================================
+   30. Отзывы: песочная кавычка, смысловые акценты, такт подписи и мягкий hover
+   ===================================================================== */
+
+.review {
+  position: relative;
+  overflow: hidden;
+  transition: background-color .34s ease,
+              border-color .32s ease,
+              box-shadow .38s var(--ease-out);
+}
+.review__text,
+.review__author {
+  position: relative;
+  z-index: 1;
+}
+
+/* Деликатная декоративная кавычка в песочном тоне (Cormorant Garamond) */
+.review::before {
+  content: "«";
+  position: absolute;
+  top: -10px;
+  right: 18px;
+  z-index: 0;
+  font: 500 84px/1 var(--serif);
+  color: var(--oak);
+  opacity: .34;
+  pointer-events: none;
+  user-select: none;
+  transition: opacity .35s ease, transform .42s var(--ease-out);
+}
+
+/* Ключевая фраза внутри отзыва: курсив, мягкий бирюзовый акцент и еле заметное сияние при появлении */
+.review__hl {
+  font-style: italic;
+  color: var(--teal-deep);
+  background: linear-gradient(to top, rgba(217, 195, 160, .24) 0%, rgba(217, 195, 160, .24) 38%, transparent 38%);
+  border-radius: 2px;
+  padding: 0 .06em;
+}
+
+/* Штрих перед подписью автора плавно удлиняется при наведении */
+.review__author::before {
+  transition: width .35s var(--ease-out), opacity .3s ease, background-color .3s ease;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* После завершения каскада сбрасываем задержку, чтобы hover-отклик был мгновенным */
+  .js body:not(.is-classic) .drawer.is-open .drawer__body .review.drawer-item.is-shown.is-revealed {
+    transition: opacity .52s var(--ease-out),
+                transform .52s var(--ease-out),
+                background-color .34s ease,
+                border-color .32s ease,
+                box-shadow .38s var(--ease-out);
+    transition-delay: 0ms;
+  }
+
+  /* Отдельный такт для подписи автора: появляется на 180 мс позже текста цитаты */
+  .js body:not(.is-classic) .drawer__body .review.drawer-item .review__author {
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity .45s var(--ease-out), transform .45s var(--ease-out);
+    transition-delay: 0ms;
+  }
+  .js body:not(.is-classic) .drawer.is-open .drawer__body .review.drawer-item.is-shown .review__author {
+    opacity: 1;
+    transform: none;
+    transition-delay: calc(var(--item-delay, 0ms) + 180ms);
+  }
+  .js body:not(.is-classic) .drawer.is-open .drawer__body .review.drawer-item.is-shown.is-revealed .review__author {
+    transition-delay: 0ms;
+  }
+
+  /* Одноразовое мягкое сияние ключевой фразы при проявлении карточки */
+  .js body:not(.is-classic) .drawer.is-open .drawer__body .review.drawer-item.is-shown .review__hl {
+    animation: em-glow 1.25s var(--ease-out) calc(var(--item-delay, 0ms) + 320ms) 1 both;
+  }
+}
+
+/* Спокойный отклик карточки при наведении мыши (без увеличения и прыжка) */
+@media (hover: hover) {
+  .review:hover,
+  .js body:not(.is-classic) .drawer.is-open .drawer__body .review.drawer-item.is-shown:hover {
+    background: rgba(255, 255, 255, .86);
+    border-color: rgba(46, 125, 127, .24);
+    box-shadow: 0 14px 30px -22px rgba(31, 41, 51, .26);
+    transition-delay: 0ms;
+  }
+  .review:hover::before {
+    opacity: .52;
+    transform: translateY(-2px);
+  }
+  .review:hover .review__author::before {
+    width: 28px;
+    opacity: 1;
+    background: var(--teal-deep);
+  }
+}
+
+@media (max-width: 767px) {
+  .review::before {
+    top: -8px;
+    right: 14px;
+    font-size: 68px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .review,
+  .review::before,
+  .review__author,
+  .review__author::before {
+    transition-duration: .01ms !important;
+  }
+  .review__hl {
+    animation: none !important;
+  }
+  .review:hover::before {
+    transform: none;
   }
 }

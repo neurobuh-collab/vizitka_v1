@@ -30,13 +30,21 @@
 <meta property="og:description" content="Бухгалтерский, налоговый и кадровый учёт от первички до сдачи отчётности. Опыт работы, кейсы автоматизации и применения нейросетей в учёте.">
 
 <script>
-/* Страховка: класс no-js → js ставит script.js первой строкой.
-   Если через 4 с после load класса js нет (скрипт не загрузился или упал до первой строки),
-   оставляем no-js: раскладка без JS читаема сама по себе (сцены вертикально, затем все панели). */
+/* Убираем мелькание первичной no-js раскладки и системного шрифта до первой отрисовки:
+   сразу включаем js + is-booting, а script.js снимет is-booting сразу после загрузки
+   шрифтов Cormorant Garamond и Inter (с запасом 650 мс и страховкой no-js через 4 с). */
 (function (d) {
+  d.classList.remove('no-js');
+  d.classList.add('js', 'is-booting');
+  setTimeout(function () {
+    if (d.classList.contains('is-booting')) d.classList.remove('is-booting');
+  }, 650);
   window.addEventListener('load', function () {
     setTimeout(function () {
-      if (!d.classList.contains('js')) d.classList.add('no-js');
+      if (d.getAttribute('data-app-ready') !== '1') {
+        d.classList.remove('js', 'is-booting');
+        d.classList.add('no-js');
+      }
     }, 4000);
   });
 })(document.documentElement);
@@ -47,7 +55,7 @@
 <link rel="preload" href="assets/fonts/cormorant-garamond-cyrillic-500-italic.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="assets/fonts/inter-cyrillic-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="styles.css?v=52">
+<link rel="stylesheet" href="styles.css?v=62">
 </head>
 <body>
 
@@ -55,6 +63,7 @@
 
 <!-- ШАПКА -->
 <header class="topbar" id="topbar">
+  <span class="topbar__progress" aria-hidden="true"></span>
   <a class="topbar__brand" href="#scene-1" data-goto="1">Марина Чатыева · бухгалтер</a>
   <nav class="topbar__nav" aria-label="Разделы">
     <a href="#panel-about" data-goto="1" data-open="about" data-zoom-x="72%" data-zoom-y="56%" data-zoom-scale="1.45">Обо мне</a>
@@ -142,8 +151,10 @@
         <button class="hotspot" type="button" data-open="contacts" data-zoom-x="44%" data-zoom-y="71%" style="--x:61.5%; --y:71%"><span class="hotspot__label">Контакты</span><span class="hotspot__arrow" aria-hidden="true">→</span></button>
       </div>
       <div class="wall wall--invite">
-        <p class="invite-title">Хотите усилить бухгалтерию? <em>Буду рада обсудить,</em> чем могу помочь.</p>
-        <a class="btn btn--primary" href="https://t.me/mikachat" target="_blank" rel="noopener">Написать в&nbsp;Telegram</a>
+        <p class="invite-title"><span class="invite-phrase invite-phrase--1">Хотите усилить бухгалтерию?</span> <span class="invite-phrase invite-phrase--2"><em>Буду рада обсудить,</em> чем могу помочь.</span></p>
+        <div class="invite-actions">
+          <a class="btn btn--primary invite-cta" href="https://t.me/mikachat" target="_blank" rel="noopener">Написать в&nbsp;Telegram</a>
+        </div>
       </div>
       <div class="scene-actions">
         <button class="btn" type="button" data-open="reviews" data-zoom-x="61.8%" data-zoom-y="50%">Отзывы <span aria-hidden="true">→</span></button>
@@ -462,26 +473,26 @@
    <!-- ОТЗЫВЫ (все одного размера) -->
    <article class="panel" id="panel-reviews" data-panel="reviews" data-title="Отзывы" aria-labelledby="t-reviews">
      <h2 class="panel__title" id="t-reviews">Отзывы коллег</h2>
-     <p class="panel__lead">Прощальные сообщения коллег с&nbsp;последнего места работы (ФИТМОСТ, май 2026)</p>
+     <p class="panel__lead">Слова коллег из&nbsp;ФИТМОСТ (май 2026)</p>
      <div class="reviews">
        <figure class="review">
-         <blockquote class="review__text"><p>Марина, спасибо тебе большое за&nbsp;эти много лет! За&nbsp;то, что&nbsp;пришла в&nbsp;один из&nbsp;самых непростых периодов и&nbsp;столько всего проходила с&nbsp;нами. Часто, когда думаю про&nbsp;то, какой профиль должен быть у&nbsp;человека, каких искать в&nbsp;ФИТМОСТ, то вспоминаю про&nbsp;тебя как&nbsp;бенчмарк&nbsp;— живого, настоящего, влюблённого в&nbsp;свою работу и&nbsp;в&nbsp;то же самое время болеющего в&nbsp;первую очередь за&nbsp;общий результат и&nbsp;цели.</p></blockquote>
+         <blockquote class="review__text"><p>Марина, спасибо тебе большое за&nbsp;эти много лет! За&nbsp;то, что&nbsp;пришла в&nbsp;один из&nbsp;самых непростых периодов и&nbsp;столько всего проходила с&nbsp;нами. Часто, когда думаю про&nbsp;то, какой профиль должен быть у&nbsp;человека, каких искать в&nbsp;ФИТМОСТ, то <em class="review__hl">вспоминаю про&nbsp;тебя как&nbsp;бенчмарк</em>&nbsp;— живого, настоящего, влюблённого в&nbsp;свою работу и&nbsp;в&nbsp;то же самое время болеющего в&nbsp;первую очередь за&nbsp;общий результат и&nbsp;цели.</p></blockquote>
          <figcaption class="review__author">Генеральный директор и&nbsp;основатель</figcaption>
        </figure>
        <figure class="review">
-         <blockquote class="review__text"><p>Марина! Не&nbsp;просто говорить тебе до&nbsp;свидания, но твой вклад и&nbsp;твой труд точно будут присутствовать каждый день! Спасибо тебе большое за&nbsp;время, за&nbsp;вовлечение и&nbsp;огромный вклад! … С&nbsp;тобой было удивительно просто и&nbsp;классно работать!</p></blockquote>
+         <blockquote class="review__text"><p>Марина! Не&nbsp;просто говорить тебе до&nbsp;свидания, но твой вклад и&nbsp;твой труд точно будут присутствовать каждый день! Спасибо тебе большое за&nbsp;время, за&nbsp;вовлечение и&nbsp;огромный вклад! … С&nbsp;тобой было <em class="review__hl">удивительно просто и&nbsp;классно работать!</em></p></blockquote>
          <figcaption class="review__author">Сооснователь</figcaption>
        </figure>
        <figure class="review">
-         <blockquote class="review__text"><p>Когда я пришла в&nbsp;ФИТМОСТ и&nbsp;<span class="nobr">кто-то</span> отправлял в&nbsp;бухгалтерию, я шла обычно к&nbsp;заместителю главного бухгалтера, потому что&nbsp;думала, что&nbsp;главбух наверное строгий и&nbsp;злой. А&nbsp;потом, когда стала больше спрашивать и&nbsp;особенно когда познакомилась лично, поняла, что&nbsp;ты очень хороший человек. Спасибо тебе за&nbsp;твою работу, за&nbsp;помощь и&nbsp;ответы на&nbsp;все вопросы!</p></blockquote>
+         <blockquote class="review__text"><p>Когда я пришла в&nbsp;ФИТМОСТ и&nbsp;<span class="nobr">кто-то</span> отправлял в&nbsp;бухгалтерию, я шла обычно к&nbsp;заместителю главного бухгалтера, потому что&nbsp;думала, что&nbsp;главбух наверное строгий и&nbsp;злой. А&nbsp;потом, когда стала больше спрашивать и&nbsp;особенно когда познакомилась лично, поняла, что&nbsp;ты очень хороший человек. Спасибо тебе за&nbsp;твою работу, <em class="review__hl">за&nbsp;помощь и&nbsp;ответы на&nbsp;все вопросы!</em></p></blockquote>
          <figcaption class="review__author">Руководитель отдела подключения партнёров</figcaption>
        </figure>
        <figure class="review">
-         <blockquote class="review__text"><p>Мне кажется, ты один из&nbsp;самых светлых и&nbsp;добрых людей, которых я встречала. … Спасибо тебе за&nbsp;помощь, презентации про&nbsp;финансы, готовность идти навстречу и&nbsp;доброту!</p></blockquote>
+         <blockquote class="review__text"><p>Мне кажется, ты один из&nbsp;самых светлых и&nbsp;добрых людей, которых я встречала. … Спасибо тебе за&nbsp;помощь, <em class="review__hl">презентации про&nbsp;финансы, готовность идти навстречу</em> и&nbsp;доброту!</p></blockquote>
          <figcaption class="review__author">Директор по&nbsp;продукту</figcaption>
        </figure>
        <figure class="review">
-         <blockquote class="review__text"><p>Ты ходячий учитель по&nbsp;финансам, была очень рада с&nbsp;тобой работать!</p></blockquote>
+         <blockquote class="review__text"><p>Ты <em class="review__hl">ходячий учитель по&nbsp;финансам</em>, была очень рада с&nbsp;тобой работать!</p></blockquote>
          <figcaption class="review__author">Менеджер <span class="nobr">B2B-продаж</span></figcaption>
        </figure>
      </div>
@@ -534,6 +545,6 @@
   "sameAs": ["https://t.me/mikachat"]
 }
 </script>
-<script src="script.js?v=52" defer></script>
+<script src="script.js?v=62" defer></script>
 </body>
 </html>

@@ -43,6 +43,10 @@ document.documentElement.classList.remove('no-js'); document.documentElement.cla
   function now() { return (window.performance && performance.now) ? performance.now() : Date.now(); }
   function closest(el, sel) { return (el && el.closest) ? el.closest(sel) : null; }
   function isRendered(el) { return !!(el && el.getClientRects && el.getClientRects().length); }
+  function isFocusVisible(el) {
+    if (!el || !el.matches) return false;
+    try { return el.matches(':focus-visible'); } catch (e) { return false; }
+  }
   function getScrollY() { return window.pageYOffset || doc.documentElement.scrollTop || 0; }
 
   function media(query) {
@@ -92,6 +96,7 @@ document.documentElement.classList.remove('no-js'); document.documentElement.cla
     panorama: $('.panorama'),
     sticky: $('.panorama__sticky'),
     track: $('.panorama__track'),
+    topbar: $('#topbar') || $('.topbar'),
     walk: $('.walk'),
     toggle: $('[data-view-toggle]'),
     drawer: $('.drawer'),
@@ -168,12 +173,33 @@ document.documentElement.classList.remove('no-js'); document.documentElement.cla
   }
 
   /* ================= Активная сцена / прогресс ================= */
+  function syncTopbarUi(p, isScrolled) {
+    if (!els.topbar) return;
+    var clamped = clamp(p, 0, 1);
+    els.topbar.style.setProperty('--progress', clamped.toFixed(4));
+    els.topbar.classList.toggle('has-progress', clamped > 0.002);
+    els.topbar.classList.toggle('is-scrolled', !!isScrolled);
+  }
+
+  function updateClassicTopbar() {
+    if (state.mode !== 'classic') return;
+    var docEl = doc.documentElement;
+    var maxY = Math.max(0, (docEl.scrollHeight || body.scrollHeight || 0) - (window.innerHeight || docEl.clientHeight || 0));
+    var y = getScrollY();
+    var p = maxY > 0 ? y / maxY : 0;
+    syncTopbarUi(p, y > 40);
+  }
+
   function setProgress(p) {
     p = clamp(p, 0, 1);
     if (Math.abs(p - state.progress) < 0.0005 && p !== 0 && p !== 1) return;
     if (p === state.progress) return;
     state.progress = p;
-    if (els.walk) els.walk.style.setProperty('--progress', p.toFixed(4));
+    var pStr = p.toFixed(4);
+    if (els.walk) els.walk.style.setProperty('--progress', pStr);
+    if (state.mode !== 'classic') {
+      syncTopbarUi(p, p > 0.03 || state.scrollY > 40);
+    }
   }
 
   function setActive(index, force) {
@@ -397,6 +423,8 @@ document.documentElement.classList.remove('no-js'); document.documentElement.cla
       state.savedScene = sceneIndex;
       resetPanoramaStyles();
       if (!initial) scrollWindowTo(0, false);
+      updateClassicTopbar();
+      watchClassicStats();
     } else if (next === 'desktop') {
       if (els.track) els.track.style.transform = '';
       measure();
@@ -469,6 +497,7 @@ document.documentElement.classList.remove('no-js'); document.documentElement.cla
   function onWindowScroll() {
     state.scrollY = getScrollY();
     if (state.mode === 'desktop') wake();
+    else if (state.mode === 'classic') updateClassicTopbar();
   }
 
   function onWheel(e) {
@@ -703,12 +732,15 @@ document.documentElement.classList.remove('no-js'); document.documentElement.cla
     homeParent: null,
     homeNext: null,
     opener: null,
+    openedByKeyboard: false,
     restoreFocus: true,
     closeTimer: 0,
     endHandler: null,
     switchTimer: 0,
     prevHash: ''
   };
+  var resetLamp = noop;
+  var resetShelves = noop;
 
   function isSafeName(name) { return typeof name === 'string' && /^[\w-]+$/.test(name); }
 
@@ -738,7 +770,6 @@ document.documentElement.classList.remove('no-js'); document.documentElement.cla
     watchNote(panel);
     setupDrawerScrollReveal(panel);
     els.drawerBody.scrollTop = 0;
-    if (panel.getAttribute('data-panel') === 'about') animateStats(panel);
     /* Ещё раз после отрисовки: при смене панели браузер успевает восстановить прокрутку */
     requestAnimationFrame(function () {
       if (drawerState.panel === panel) els.drawerBody.scrollTop = 0;
@@ -775,39 +806,112 @@ document.documentElement.classList.remove('no-js'); document.documentElement.cla
     noteObserver.observe(note);
   }
 
-  /* Цифры в «Обо мне» считаются от нуля до значения */
+  /* Цифры в «Обо мне» (E18): каскадный счёт от 0 с плавным замедлением и финальным акцентом */
+  var statTimers = [];
+  var statRafs = [];
+  var classicStatsObserver = null;
+
   function formatCount(n) {
     var s = String(n);
     return s.length > 3 ? s.replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0') : s;
   }
 
-  function animateStats(panel) {
-    if (state.reduced) return;
-    $$('.stat__num', panel).forEach(function (el) {
+  function stopStatsAnimation(container) {
+    while (statTimers.length) clearTimeout(statTimers.pop());
+    while (statRafs.length) cancelAnimationFrame(statRafs.pop());
+    if (!container) return;
+    $$('.stat__num', container).forEach(function (el) {
+      var orig = el.getAttribute('data-stat-orig');
+      if (orig) el.textContent = orig;
+      el.classList.remove('is-settled');
+      el.removeAttribute('data-counted');
+    });
+  }
+
+  function animateStats(container, baseDelayMs) {
+    if (!container) return;
+    var nums = $$('.stat__num', container);
+    if (!nums.length) return;
+
+    nums.forEach(function (el) {
+      if (!el.getAttribute('data-stat-orig')) {
+        el.setAttribute('data-stat-orig', (el.textContent || '').trim());
+      }
+      el.classList.remove('is-settled');
+    });
+
+    if (state.reduced) {
+      nums.forEach(function (el) {
+        el.textContent = el.getAttribute('data-stat-orig') || el.textContent;
+      });
+      return;
+    }
+
+    var startDelay = typeof baseDelayMs === 'number' ? Math.max(0, baseDelayMs) : 0;
+
+    nums.forEach(function (el, idx) {
       if (el.getAttribute('data-counted') === '1') return;
-      var text = (el.textContent || '').trim();
-      var digits = text.replace(/[^\d]/g, '');
+      var orig = el.getAttribute('data-stat-orig') || (el.textContent || '').trim();
+      var digits = orig.replace(/[^\d]/g, '');
       if (!digits) return;
       var to = parseInt(digits, 10);
-      var suffix = text.replace(/[\d\s\u00A0]/g, '');
+      var suffix = orig.replace(/[\d\s\u00A0]/g, '');
       el.setAttribute('data-counted', '1');
-      var started = 0;
-      function step(now) {
-        if (!started) started = now;
-        var p = Math.min(1, (now - started) / 900);
-        var eased = 1 - Math.pow(1 - p, 3);
-        el.textContent = formatCount(Math.round(to * eased)) + suffix;
-        if (p < 1) requestAnimationFrame(step);
-        else el.textContent = formatCount(to) + suffix;
-      }
-      requestAnimationFrame(step);
+      el.textContent = '0' + suffix;
+
+      var duration = to < 20 ? 950 : 1200;
+      var delay = startDelay + idx * 110;
+
+      var timer = setTimeout(function () {
+        var started = 0;
+        function step(ts) {
+          if (!started) started = ts;
+          var p = Math.min(1, (ts - started) / duration);
+          var eased = 1 - Math.pow(1 - p, 4);
+          el.textContent = formatCount(Math.round(to * eased)) + suffix;
+          if (p < 1) {
+            statRafs.push(requestAnimationFrame(step));
+          } else {
+            el.textContent = orig;
+            el.classList.add('is-settled');
+          }
+        }
+        statRafs.push(requestAnimationFrame(step));
+      }, delay);
+      statTimers.push(timer);
     });
+  }
+
+  function watchClassicStats() {
+    if (classicStatsObserver) {
+      classicStatsObserver.disconnect();
+      classicStatsObserver = null;
+    }
+    if (state.mode !== 'classic' || state.reduced) return;
+    var aboutHead = $('.library .about-head');
+    if (!aboutHead) return;
+    if (typeof IntersectionObserver !== 'function') {
+      animateStats(aboutHead, 120);
+      return;
+    }
+    classicStatsObserver = new IntersectionObserver(function (entries) {
+      for (var i = 0; i < entries.length; i++) {
+        if (entries[i].isIntersecting) {
+          animateStats(aboutHead, 80);
+          classicStatsObserver.disconnect();
+          classicStatsObserver = null;
+          return;
+        }
+      }
+    }, { threshold: 0.3 });
+    classicStatsObserver.observe(aboutHead);
   }
 
   function unmountPanel() {
     disconnectDrawerObserver();
     var panel = drawerState.panel;
     if (!panel) return;
+    if (panel.getAttribute('data-panel') === 'about') stopStatsAnimation(panel);
     var parent = (drawerState.homeParent && doc.contains(drawerState.homeParent)) ? drawerState.homeParent : els.library;
     if (parent) {
       var next = (drawerState.homeNext && drawerState.homeNext.parentNode === parent) ? drawerState.homeNext : null;
@@ -948,9 +1052,12 @@ document.documentElement.classList.remove('no-js'); document.documentElement.cla
 
     // первое открытие
     drawerState.opener = opener || (doc.activeElement !== body ? doc.activeElement : null);
+    drawerState.openedByKeyboard = !!(opener && isFocusVisible(opener));
     var hash = location.hash || '';
     drawerState.prevHash = /^#panel-/.test(hash) ? '' : hash;
 
+    resetLamp();
+    resetShelves();
     setSceneZoom(name, opener);
     updateVideos();
     mountPanel(panel);
@@ -992,13 +1099,15 @@ document.documentElement.classList.remove('no-js'); document.documentElement.cla
     }
     drawerState.open = false;
     drawerState.closing = true;
-    drawerState.restoreFocus = opts.restoreFocus !== false;
+    drawerState.restoreFocus = opts.restoreFocus === true || (opts.restoreFocus !== false && drawerState.openedByKeyboard);
 
     clearTimeout(drawerState.switchTimer);
     drawerState.switchTimer = 0;
     if (els.drawerBody) els.drawerBody.classList.remove('is-switching');
     if (els.drawer) els.drawer.classList.remove('is-open');
     clearSceneZoom();
+    resetLamp();
+    resetShelves();
     body.classList.remove('is-drawer-open');
     updateVideos();
     replaceHash(drawerState.prevHash || '');
@@ -1021,13 +1130,20 @@ document.documentElement.classList.remove('no-js'); document.documentElement.cla
     drawerState.endHandler = null;
 
     clearSceneZoom();
+    resetLamp();
+    resetShelves();
     if (els.drawer) els.drawer.hidden = true;
     unmountPanel();
     if (els.drawerTitle) els.drawerTitle.textContent = '';
 
     var opener = drawerState.opener;
     drawerState.opener = null;
-    if (drawerState.restoreFocus && opener && doc.contains(opener) && isRendered(opener)) focusEl(opener);
+    drawerState.openedByKeyboard = false;
+    if (drawerState.restoreFocus && opener && doc.contains(opener) && isRendered(opener)) {
+      focusEl(opener);
+    } else if (doc.activeElement && doc.activeElement !== body && doc.activeElement.blur) {
+      try { doc.activeElement.blur(); } catch (e) {}
+    }
   }
 
   /* Ловушка фокуса: Tab / Shift+Tab циклятся внутри ящика */
@@ -1091,10 +1207,19 @@ document.documentElement.classList.remove('no-js'); document.documentElement.cla
     var t = e.target;
     if (!t || !t.closest) return;
 
+    var extLink = t.closest('a[target="_blank"], .case__link');
+    if (extLink && e.detail > 0 && extLink.blur) {
+      setTimeout(function () {
+        if (doc.activeElement === extLink) {
+          try { extLink.blur(); } catch (err) {}
+        }
+      }, 0);
+    }
+
     var copyBtn = t.closest('[data-copy]');
     if (copyBtn) { e.preventDefault(); copyFromButton(copyBtn); return; }
 
-    if (t.closest('[data-drawer-close]')) { e.preventDefault(); closeDrawer(); return; }
+    if (t.closest('[data-drawer-close]')) { e.preventDefault(); closeDrawer({ restoreFocus: e.detail === 0 }); return; }
 
     if (t.closest('[data-view-toggle]')) {
       e.preventDefault();
@@ -1279,20 +1404,46 @@ document.documentElement.classList.remove('no-js'); document.documentElement.cla
     var hovered = [];
     var focused = false;
 
-    function update() { scene2.classList.toggle('is-lamp-on', hovered.length > 0 || focused); }
-    function enter(el) { if (hovered.indexOf(el) === -1) hovered.push(el); update(); }
-    function leave(el) { var i = hovered.indexOf(el); if (i !== -1) hovered.splice(i, 1); update(); }
+    function update() {
+      var on = !drawerState.open && (hovered.length > 0 || focused);
+      scene2.classList.toggle('is-lamp-on', on);
+    }
+    function reset() {
+      hovered.length = 0;
+      focused = false;
+      scene2.classList.remove('is-lamp-on');
+    }
+    resetLamp = reset;
+
+    function enter(el) {
+      if (drawerState.open) return;
+      if (hovered.indexOf(el) === -1) hovered.push(el);
+      update();
+    }
+    function leave(el) {
+      var i = hovered.indexOf(el);
+      if (i !== -1) hovered.splice(i, 1);
+      update();
+    }
 
     $$('.desk-zone, [data-desk-zone], .hotspot', scene2).forEach(function (el) {
       el.addEventListener('mouseenter', function () { enter(el); });
       el.addEventListener('mouseleave', function () { leave(el); });
     });
+    scene2.addEventListener('mouseleave', reset);
+    window.addEventListener('blur', reset);
+
     scene2.addEventListener('focusin', function (e) {
-      if (closest(e.target, '.hotspot')) { focused = true; update(); }
+      var hs = closest(e.target, '.hotspot');
+      if (hs && !state.programmaticFocus && isFocusVisible(hs)) {
+        focused = true;
+        update();
+      }
     });
     scene2.addEventListener('focusout', function (e) {
       var next = e.relatedTarget;
-      focused = !!(next && scene2.contains(next) && closest(next, '.hotspot'));
+      var hs = next && scene2.contains(next) ? closest(next, '.hotspot') : null;
+      focused = !!(hs && isFocusVisible(hs));
       update();
     });
   }
@@ -1301,6 +1452,7 @@ document.documentElement.classList.remove('no-js'); document.documentElement.cla
   function initShelves() {
     var zones = $$('.hl-zone[data-zone]');
     if (!zones.length) return;
+    var resetters = [];
     $$('.hotspot[data-zone-target]').forEach(function (btn) {
       var name = btn.getAttribute('data-zone-target');
       var mine = zones.filter(function (z) { return z.getAttribute('data-zone') === name; });
@@ -1308,14 +1460,23 @@ document.documentElement.classList.remove('no-js'); document.documentElement.cla
       var hover = false;
       var focus = false;
       function update() {
-        var on = hover || focus;
+        var on = !drawerState.open && (hover || focus);
         mine.forEach(function (z) { z.classList.toggle('is-lit', on); });
       }
-      btn.addEventListener('mouseenter', function () { hover = true; update(); });
+      function reset() {
+        hover = false;
+        focus = false;
+        mine.forEach(function (z) { z.classList.remove('is-lit'); });
+      }
+      resetters.push(reset);
+      btn.addEventListener('mouseenter', function () { if (!drawerState.open) { hover = true; update(); } });
       btn.addEventListener('mouseleave', function () { hover = false; update(); });
-      btn.addEventListener('focus', function () { focus = true; update(); });
+      btn.addEventListener('focus', function () { if (!state.programmaticFocus && isFocusVisible(btn)) { focus = true; update(); } });
       btn.addEventListener('blur', function () { focus = false; update(); });
     });
+    resetShelves = function () {
+      resetters.forEach(function (fn) { fn(); });
+    };
   }
 
   
@@ -1477,12 +1638,20 @@ function scheduleItemReveal(target, delayMs) {
 
   var t = setTimeout(function () {
     target.classList.add('is-shown');
+    if (target.classList.contains('about-head')) {
+      animateStats(target, safeDelay + 120);
+    }
     if (target.classList.contains('ai-flow')) {
       var flowTimer = setTimeout(function () {
         triggerAiFlowIgnition(target);
       }, safeDelay + 220);
       aiFlowTimers.push(flowTimer);
     }
+    var settleTimer = setTimeout(function () {
+      target.style.setProperty('--item-delay', '0ms');
+      target.classList.add('is-revealed');
+    }, safeDelay + 560);
+    drawerRevealTimers.push(settleTimer);
   }, 24);
   drawerRevealTimers.push(t);
 }
@@ -1491,7 +1660,7 @@ function evaluateVisibleDrawerItems(isInitialOpen) {
   if (!activeDrawerPanel || !els.drawerBody || !activeDrawerItems.length) return;
   if (state.reduced) {
     activeDrawerItems.forEach(function (el) {
-      el.classList.add('is-shown');
+      el.classList.add('is-shown', 'is-revealed');
       if (el.classList.contains('ai-flow')) triggerAiFlowIgnition(el);
     });
     return;
@@ -1537,7 +1706,7 @@ function setupDrawerScrollReveal(panel) {
 
   // Снимаем старые классы со всех узлов панели
   $$('.drawer-item', panel).forEach(function (el) {
-    el.classList.remove('drawer-item', 'is-shown');
+    el.classList.remove('drawer-item', 'is-shown', 'is-revealed');
     el.style.removeProperty('--item-delay');
     delete el.dataset.revealScheduled;
   });
@@ -1553,7 +1722,7 @@ function setupDrawerScrollReveal(panel) {
 
   if (state.reduced) {
     items.forEach(function (el) {
-      el.classList.add('is-shown');
+      el.classList.add('is-shown', 'is-revealed');
       if (el.classList.contains('ai-flow')) triggerAiFlowIgnition(el);
     });
     updateDrawerScrollUi();
@@ -1679,7 +1848,6 @@ function setupDrawerScrollReveal(panel) {
     }
     if (els.drawerBody) {
       els.drawerBody.addEventListener('scroll', onDrawerScrollReveal, { passive: true });
-    if (els.drawerBody) {
       els.drawerBody.addEventListener('toggle', function (ev) {
         var det = ev.target;
         if (det && det.tagName === 'DETAILS' && det.open && activeDrawerPanel) {
@@ -1690,7 +1858,7 @@ function setupDrawerScrollReveal(panel) {
             return;
           }
           inner.forEach(function (el) {
-            el.classList.remove('is-shown');
+            el.classList.remove('is-shown', 'is-revealed');
             delete el.dataset.revealScheduled;
             el.classList.add('drawer-item');
             if (activeDrawerItems.indexOf(el) === -1) activeDrawerItems.push(el);
@@ -1705,8 +1873,6 @@ function setupDrawerScrollReveal(panel) {
           requestAnimationFrame(updateDrawerScrollUi);
         }
       }, true);
-    }
-
     }
     $$('.drawer__backdrop').forEach(function (bd) {
       bd.addEventListener('wheel', function (e) { e.preventDefault(); }, { passive: false });
@@ -1724,7 +1890,40 @@ function setupDrawerScrollReveal(panel) {
     });
   }
 
+  function finishBoot() {
+    var root = doc.documentElement;
+    var done = false;
+    function reveal() {
+      if (done) return;
+      done = true;
+      requestAnimationFrame(function () {
+        root.classList.remove('is-booting');
+        root.classList.add('is-ready');
+      });
+    }
+    var safety = setTimeout(reveal, 450);
+    if (doc.fonts && typeof doc.fonts.load === 'function' && typeof Promise === 'function') {
+      var tasks = [
+        doc.fonts.load('500 48px "Cormorant Garamond"', 'Бухгалтерия, которой'),
+        doc.fonts.load('italic 500 48px "Cormorant Garamond"', 'доверяют'),
+        doc.fonts.load('400 16px "Inter"', 'Меня зовут Марина'),
+        doc.fonts.load('500 15px "Inter"', 'Связаться со мной'),
+        doc.fonts.ready
+      ];
+      Promise.all(tasks.map(function (p) {
+        return Promise.resolve(p).catch(noop);
+      })).then(function () {
+        clearTimeout(safety);
+        reveal();
+      });
+    } else {
+      clearTimeout(safety);
+      reveal();
+    }
+  }
+
   function init() {
+    doc.documentElement.setAttribute('data-app-ready', '1');
     var hash = location.hash || '';
     state.classic = hash === '#classic' || storageGet() === 'classic';
 
@@ -1736,6 +1935,7 @@ function setupDrawerScrollReveal(panel) {
     applyMode(true);
     handleHash(hash, true);
     updateNavActive();
+    finishBoot();
   }
 
   init();
