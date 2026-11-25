@@ -736,6 +736,7 @@ document.documentElement.classList.remove('no-js'); document.documentElement.cla
     if (els.drawerTitle) els.drawerTitle.textContent = panelTitle(panel);
     resetAccordions(panel);
     watchNote(panel);
+    staggerListItems(panel);
     els.drawerBody.scrollTop = 0;
     if (panel.getAttribute('data-panel') === 'about') animateStats(panel);
     /* Ещё раз после отрисовки: при смене панели браузер успевает восстановить прокрутку */
@@ -1316,7 +1317,52 @@ document.documentElement.classList.remove('no-js'); document.documentElement.cla
     });
   }
 
-  /* ================= Адрес (#scene-N, #panel-name, #classic) ================= */
+  /* ================= Пословный вход заголовка (A1) ================= */
+function collectTextNodes(node, out) {
+  if (!node) return;
+  if (node.nodeType === 3) { out.push(node); return; }
+  for (var c = node.firstChild; c; c = c.nextSibling) collectTextNodes(c, out);
+}
+
+function splitHeadlineWords() {
+  $$('.hero-title, .classic-intro__title').forEach(function (el) {
+    if (el.__words) return;
+    el.__words = true;
+    var i = 0;
+    var textNodes = [];
+    collectTextNodes(el, textNodes);
+    textNodes.forEach(function (node) {
+      var parent = node.parentNode;
+      if (!parent) return;
+      var parts = (node.nodeValue || '').split(/(\s+)/);
+      var frag = doc.createDocumentFragment();
+      parts.forEach(function (part) {
+        if (part === '') return;
+        if (/^\s+$/.test(part)) {
+          frag.appendChild(doc.createTextNode(part));
+        } else {
+          var span = doc.createElement('span');
+          span.className = 'hero-word';
+          span.textContent = part;
+          span.style.setProperty('--i', String(i++));
+          frag.appendChild(span);
+        }
+      });
+      parent.replaceChild(frag, node);
+    });
+  });
+}
+
+/* ================= Stagger пунктов списка в панели (E16) ================= */
+function staggerListItems(panel) {
+  if (!panel) return;
+  var i = 0;
+  $$('li', panel).forEach(function (el) {
+    el.style.setProperty('--li-i', String(i++));
+  });
+}
+
+/* ================= Адрес (#scene-N, #panel-name, #classic) ================= */
   function sceneIndexForPanel(name) {
     if (!isSafeName(name)) return -1;
     var el = $('.scene .hotspot[data-open="' + name + '"]') ||
@@ -1437,6 +1483,7 @@ document.documentElement.classList.remove('no-js'); document.documentElement.cla
     setupVideos();
     initLamp();
     initShelves();
+    splitHeadlineWords();
     bindEvents();
     applyMode(true);
     handleHash(hash, true);
